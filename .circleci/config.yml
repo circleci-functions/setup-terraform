@@ -20,9 +20,10 @@ executors:
   base:
     docker:
       - image: cimg/base:stable
+  # cimg/base:stable is amd64 only; current is published for arm64 too.
   base-arm64:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/base:current
     resource_class: arm.medium
   macos:
     macos:
