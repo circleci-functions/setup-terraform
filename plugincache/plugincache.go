@@ -176,6 +176,10 @@ type Saver interface {
 type Key struct {
 	// Key partitions the cache, for example per root module in a monorepo.
 	Key string
+	// Job is the CircleCI job name. Jobs that run different modules need
+	// different providers, and a job that never runs terraform init would
+	// otherwise save an empty cache that the others then restore.
+	Job string
 	// Checksum, usually of .terraform.lock.hcl, starts a fresh entry when it
 	// changes.
 	Checksum string
@@ -203,9 +207,11 @@ func Save(ctx context.Context, saver Saver, k Key, dir string) {
 
 // saveKey is the key the plugin cache saves under:
 //
-//	setup-terraform-plugins-v1-<key>-<os>-<arch>-<rotating epoch>-<checksum>
+//	setup-terraform-plugins-v1-<key>-<job>-<os>-<arch>-<rotating epoch>-<checksum>
 //
-// The epoch comes before the checksum so that a prefix broad enough to match
+// Ending the job's part on the platform token means one job's prefix can't
+// match another's: "test" doesn't match "test-integration". The epoch comes
+// before the checksum so that a prefix broad enough to match
 // any checksum still stops at the current window.
 func (k Key) saveKey(now time.Time) string {
 	return k.windowPrefix(now) + k.Checksum
@@ -224,5 +230,5 @@ func (k Key) restoreKeys(now time.Time) []string {
 func (k Key) windowPrefix(now time.Time) string {
 	secs := int64(cacheRotation.Seconds())
 	epoch := now.Unix() / secs * secs
-	return fmt.Sprintf("setup-terraform-plugins-v1-%s-%s-%d-", k.Key, k.Platform, epoch)
+	return fmt.Sprintf("setup-terraform-plugins-v1-%s-%s-%s-%d-", k.Key, k.Job, k.Platform, epoch)
 }

@@ -105,8 +105,9 @@ Pass `--checksum` so the cache refreshes when your providers change. CircleCI ex
 
 When the checksum changes, the cache starts from the newest entry saved in the current 72-hour
 window, so only new providers are downloaded. The cache rotates every 72 hours, which keeps it
-from growing without limit. Use `--key` to keep caches apart, for example per root module in a
-monorepo, and `--cache=false` to turn caching off. Cache problems never fail the job.
+from growing without limit. Each job keeps its own cache, since jobs that run different modules
+need different providers. Use `--key` to keep caches apart within a job, for example per root
+module in a monorepo, and `--cache=false` to turn caching off. Cache problems never fail the job.
 
 Terraform uses a cached provider only when `.terraform.lock.hcl` records a checksum for it on
 the platform the job runs on. A lock file made on a Mac often has only that Mac's. Record the
@@ -173,7 +174,7 @@ Set `TF_IN_AUTOMATION=1` on the job to drop the hints Terraform prints for inter
 | `--os` | (the step's) | Operating system to install for: `linux`, `darwin` or `windows` |
 | `--arch` | (the step's) | Architecture to install for: `amd64` or `arm64` |
 | `--cache` | true | Set to `false` to turn off the provider plugin cache |
-| `--key` | (empty) | Cache key component, for keeping caches apart, e.g. per root module in a monorepo |
+| `--key` | (empty) | Cache key component, for keeping caches apart within a job, e.g. per root module in a monorepo |
 | `--checksum` | (empty) | Refresh the cache when this changes, usually `{{ checksum ".terraform.lock.hcl" }}` |
 
 setup-terraform installs the release built for the platform the step runs on. `--os` and

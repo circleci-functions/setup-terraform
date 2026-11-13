@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,11 +122,11 @@ func TestConfigureExportsWhenCLIConfigFileIsSet(t *testing.T) {
 }
 
 func TestKeys(t *testing.T) {
-	k := Key{Key: "infra", Checksum: "abc", Platform: "linux-amd64"}
+	k := Key{Key: "infra", Job: "plan", Checksum: "abc", Platform: "linux-amd64"}
 	now := time.Unix(1_700_000_000, 0)
 	window := now.Unix() / int64(cacheRotation.Seconds()) * int64(cacheRotation.Seconds())
 
-	prefix := "setup-terraform-plugins-v1-infra-linux-amd64-" + itoa(window) + "-"
+	prefix := "setup-terraform-plugins-v1-infra-plan-linux-amd64-" + itoa(window) + "-"
 	assert.Equal(t, k.saveKey(now), prefix+"abc")
 	assert.DeepEqual(t, k.restoreKeys(now), []string{prefix + "abc", prefix})
 
@@ -133,11 +134,38 @@ func TestKeys(t *testing.T) {
 	assert.Assert(t, k.saveKey(next) != k.saveKey(now), "the key should rotate")
 }
 
+// TestKeysSeparateJobs checks one job's restore can't pick up another's
+// entry, even when one job name is a prefix of the other.
+func TestKeysSeparateJobs(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	short := Key{Job: "test", Platform: "linux-amd64"}
+	long := Key{Job: "test-integration", Platform: "linux-amd64"}
+
+	for _, restore := range short.restoreKeys(now) {
+		assert.Assert(t, !strings.HasPrefix(long.saveKey(now), restore), "%q matches %q", restore, long.saveKey(now))
+	}
+}
+
+func TestRestoreIgnoresOtherJobs(t *testing.T) {
+	srv := sdktest.NewServer(t)
+	client := srv.Client()
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	assert.NilError(t, os.WriteFile(filepath.Join(dir, "marker"), []byte("other job"), 0o600))
+	Save(ctx, client, Key{Job: "check_format", Platform: "linux-amd64"}, dir)
+	assert.NilError(t, os.RemoveAll(dir))
+
+	Restore(ctx, client, Key{Job: "plan", Platform: "linux-amd64"})
+	_, err := os.Stat(filepath.Join(dir, "marker"))
+	assert.Assert(t, os.IsNotExist(err), "a job should not restore another job's cache")
+}
+
 func TestSaveAtTeardownRoundTrips(t *testing.T) {
 	srv := sdktest.NewServer(t)
 	client := srv.Client()
 	ctx := context.Background()
-	k := Key{Checksum: "lock-a", Platform: "linux-amd64"}
+	k := Key{Job: "plan", Checksum: "lock-a", Platform: "linux-amd64"}
 
 	dir := t.TempDir()
 	assert.NilError(t, os.WriteFile(filepath.Join(dir, "marker"), []byte("hit"), 0o600))
@@ -148,7 +176,7 @@ func TestSaveAtTeardownRoundTrips(t *testing.T) {
 	assert.NilError(t, os.RemoveAll(dir))
 
 	// A new checksum still restores from the same window.
-	Restore(ctx, client, Key{Checksum: "lock-b", Platform: "linux-amd64"})
+	Restore(ctx, client, Key{Job: "plan", Checksum: "lock-b", Platform: "linux-amd64"})
 	got, err := os.ReadFile(filepath.Join(dir, "marker")) //nolint:gosec // test temp file
 	assert.NilError(t, err)
 	assert.Equal(t, string(got), "hit")

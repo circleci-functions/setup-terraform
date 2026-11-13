@@ -90,7 +90,7 @@ func (c *cli) cachePlugins(ctx context.Context, client *sdk.Client, platform str
 	}
 	fmt.Fprintf(os.Stderr, "setup-terraform: provider plugin cache at %s, %s\n", setup.Dir, setup.How)
 
-	key := plugincache.Key{Key: c.Key, Checksum: c.Checksum, Platform: platform}
+	key := plugincache.Key{Key: c.Key, Job: os.Getenv("CIRCLE_JOB"), Checksum: c.Checksum, Platform: platform}
 	plugincache.Restore(ctx, client, key)
 	plugincache.Save(ctx, client.AtTeardown(), key, setup.Dir)
 }
