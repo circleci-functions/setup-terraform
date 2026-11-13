@@ -22,7 +22,7 @@ func run(t *testing.T, args ...string) (int, string) {
 func TestHelp(t *testing.T) {
 	code, out := run(t, "--help")
 	assert.Equal(t, code, 0, out)
-	for _, want := range []string{"Install the Terraform CLI", "--version", "--version-file", "--os", "--arch"} {
+	for _, want := range []string{"Install the Terraform CLI", "--version", "--version-file", "--os", "--arch", "--cache", "--key", "--checksum"} {
 		assert.Assert(t, strings.Contains(out, want), "help missing %q:\n%s", want, out)
 	}
 }

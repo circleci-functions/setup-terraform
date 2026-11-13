@@ -30,8 +30,9 @@ func makeZip(t *testing.T, entryName, content string) []byte {
 // releaseServer serves the zip at the release path and SHA256SUMS with the
 // given contents, so a test can supply a deliberately wrong or incomplete sums
 // file.
-func releaseServer(t *testing.T, version, osName, arch string, archive []byte, sums string) string {
+func releaseServer(t *testing.T, osName, arch string, archive []byte, sums string) string {
 	t.Helper()
+	const version = "1.9.8"
 	zipName := fmt.Sprintf("terraform_%s_%s_%s.zip", version, osName, arch)
 	base := "/terraform/" + version + "/"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +61,7 @@ func TestDownload(t *testing.T) {
 	zipName := fmt.Sprintf("terraform_%s_%s_%s.zip", version, osName, arch)
 	sums := "abc123  some-other-file\n" + sumsLine(archive, zipName)
 
-	baseURL := releaseServer(t, version, osName, arch, archive, sums)
+	baseURL := releaseServer(t, osName, arch, archive, sums)
 	dest := t.TempDir()
 
 	path, err := Download(context.Background(), baseURL, version, osName, arch, dest)
@@ -107,9 +108,31 @@ func TestDownloadErrors(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL := releaseServer(t, version, osName, arch, tc.archive, tc.sums(tc.archive))
+			baseURL := releaseServer(t, osName, arch, tc.archive, tc.sums(tc.archive))
 			_, err := Download(context.Background(), baseURL, version, osName, arch, t.TempDir())
 			assert.ErrorContains(t, err, tc.wantErr)
 		})
 	}
+}
+
+func TestDownloadWindowsExtractsExe(t *testing.T) {
+	const version, osName, arch = "1.9.8", "windows", "amd64"
+	archive := makeZip(t, "terraform.exe", "MZ")
+	zipName := fmt.Sprintf("terraform_%s_%s_%s.zip", version, osName, arch)
+	baseURL := releaseServer(t, osName, arch, archive, sumsLine(archive, zipName))
+	dest := t.TempDir()
+
+	path, err := Download(context.Background(), baseURL, version, osName, arch, dest)
+	assert.NilError(t, err)
+	assert.Equal(t, path, filepath.Join(dest, "terraform.exe"))
+}
+
+func TestDownloadNoBuildForPlatform(t *testing.T) {
+	const version = "1.9.8"
+	archive := makeZip(t, "terraform", "real")
+	// The server only has linux_arm64; ask for windows_arm64.
+	baseURL := releaseServer(t, "linux", "arm64", archive, "")
+
+	_, err := Download(context.Background(), baseURL, version, "windows", "arm64", t.TempDir())
+	assert.ErrorContains(t, err, "terraform 1.9.8 has no windows_arm64 build")
 }

@@ -4,7 +4,10 @@
 // The download is verified against HashiCorp's published SHA256SUMS before
 // install.
 //
-// Supported platforms: linux and darwin, amd64 and arm64.
+// It also points Terraform at a provider plugin cache that is restored now and
+// saved at the end of the job.
+//
+// Supported platforms: linux, darwin and windows, amd64 and arm64.
 package main
 
 import (
@@ -16,20 +19,26 @@ import (
 
 	"github.com/alecthomas/kong"
 
+	"github.com/circleci-functions/toolkit/bashenv"
 	"github.com/circleci-functions/toolkit/functionyaml"
 	"github.com/circleci-functions/toolkit/sdk"
 
+	"github.com/circleci-functions/setup-terraform/plugincache"
 	"github.com/circleci-functions/setup-terraform/terraform"
 )
 
 type cli struct {
 	Version     string `help:"Terraform version to install: 'latest', an exact version (1.9.8), or a prefix (1.9, 1) resolving to the newest stable match. When neither this nor --version-file is set, latest is installed." xor:"version"`
 	VersionFile string `name:"version-file" help:"Path to a .terraform-version file to read the version from, in the form --version takes. Can't be used with --version." xor:"version" example:".terraform-version"`
-	OS          string `help:"Operating system to install for: linux or darwin. Defaults to the one the step runs on."`
+	OS          string `help:"Operating system to install for: linux, darwin or windows. Defaults to the one the step runs on."`
 	Arch        string `help:"Architecture to install for: amd64 or arm64. Defaults to the one the step runs on."`
+
+	Cache    bool   `help:"Cache Terraform's provider plugins: restore them now and save them at the end of the job. Set to false to turn caching off." default:"true"`
+	Key      string `help:"Optional cache key component, to keep caches apart, e.g. per root module in a monorepo."`
+	Checksum string `help:"Optional checksum to start a fresh cache entry when it changes, usually the checksum of .terraform.lock.hcl."`
 }
 
-func (c *cli) Run(ctx context.Context) error {
+func (c *cli) Run(ctx context.Context, client *sdk.Client) error {
 	osName, arch, err := terraform.Platform(c.OS, c.Arch, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return err
@@ -57,7 +66,33 @@ func (c *cli) Run(ctx context.Context) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "setup-terraform: installed Terraform v%s\n", version)
+
+	if c.Cache {
+		c.cachePlugins(ctx, client, osName+"-"+arch)
+	}
 	return nil
+}
+
+// cachePlugins points Terraform at a plugin cache, restores it, and saves it at
+// the end of the job. Caching is a convenience, so a problem with it is
+// reported and never fails the step.
+func (c *cli) cachePlugins(ctx context.Context, client *sdk.Client, platform string) {
+	home, _ := os.UserHomeDir()
+	setup, err := plugincache.Configure(plugincache.Env{
+		Getenv:    os.Getenv,
+		GOOS:      runtime.GOOS,
+		Home:      home,
+		ExportEnv: bashenv.ExportEnvVars,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "setup-terraform: not caching provider plugins: %v\n", err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "setup-terraform: provider plugin cache at %s, %s\n", setup.Dir, setup.How)
+
+	key := plugincache.Key{Key: c.Key, Checksum: c.Checksum, Platform: platform}
+	plugincache.Restore(ctx, client, key)
+	plugincache.Save(ctx, client.AtTeardown(), key, setup.Dir)
 }
 
 // installDir is where the terraform binary is placed before being linked onto

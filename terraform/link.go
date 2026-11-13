@@ -3,7 +3,6 @@ package terraform
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/circleci-functions/toolkit/pathlink"
@@ -43,10 +42,11 @@ func Install(ctx context.Context, opts Options) (string, error) {
 // version rather than a copy already present.
 func linkOnPath(installDir, version string) error {
 	_, err := pathlink.Ensure(pathlink.Options{
-		Names:   []string{binaryName},
-		FromDir: installDir,
+		Names:     []string{binaryName},
+		FromDir:   installDir,
+		Preferred: pathlink.UserBinDirs(),
 		Verify: func(bin string) error {
-			out, err := exec.Command(bin, "version").CombinedOutput()
+			out, err := pathlink.Command(bin, "version").CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("run terraform version: %w", err)
 			}
