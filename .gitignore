@@ -37,3 +37,4 @@ dist/
 
 # Compiled binary (same name as the module)
 /setup-terraform
+test-results/

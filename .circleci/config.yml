@@ -3,10 +3,18 @@ version: 2.1
 orbs:
   toolkit: https://raw.githubusercontent.com/circleci-functions/toolkit/refs/heads/main/orbs/toolkit.yml
 
+parameters:
+  prerelease:
+    type: boolean
+    default: false
+    description: >-
+      Publish this branch as a pre-release instead of running the full suite
+      (see RELEASE.md). Set it when triggering a pipeline from the UI.
+
 executors:
   go:
     docker:
-      - image: cimg/go:1.26
+      - image: cimg/go:1.27
   # smoke-test runs the cross-compiled binary on an image with no Go and no Terraform.
   base:
     docker:
@@ -17,13 +25,17 @@ jobs:
     executor: go
     steps:
       - checkout
-      - toolkit/private-mod-init
       - restore_cache:
           keys:
             - setup-terraform-go-{{ checksum "go.sum" }}-
             - setup-terraform-go-
       - run: task lint
+      # A release is the only thing that runs `task publish`, so a missing task
+      # would otherwise surface at release time.
+      - run: task lint-tasks
       - run: task test
+      - store_test_results:
+          path: test-results
       - save_cache:
           key: setup-terraform-go-{{ checksum "go.sum" }}-{{ epoch }}
           paths:
@@ -36,7 +48,6 @@ jobs:
     executor: go
     steps:
       - checkout
-      - toolkit/private-mod-init
       - restore_cache:
           keys:
             - setup-terraform-go-{{ checksum "go.sum" }}-
@@ -53,7 +64,6 @@ jobs:
     executor: go
     steps:
       - checkout
-      - toolkit/private-mod-init
       - restore_cache:
           keys:
             - setup-terraform-go-{{ checksum "go.sum" }}-
@@ -61,6 +71,8 @@ jobs:
       - run:
           name: Run acceptance tests
           command: task acceptance
+      - store_test_results:
+          path: test-results
 
   # The one property the in-process acceptance suite can't prove: the shipped
   # cross-compiled artifact installs Terraform for real, and a later step resolves
@@ -83,55 +95,51 @@ jobs:
             command -v terraform
             terraform version
 
-  publish:
-    executor: go
-    steps:
-      - checkout
-      - toolkit/private-mod-init
-      - restore_cache:
-          keys:
-            - setup-terraform-go-{{ checksum "go.sum" }}-
-            - setup-terraform-go-
-      - toolkit/setup-aws-oidc:
-          role_arn: $FUNCTIONS_PUBLISHER_ROLE_ARN
-      - run:
-          name: Extract version from tag
-          command: |
-            VERSION="${CIRCLE_TAG}-$(git rev-parse --short HEAD)"
-            echo "export VERSION=$VERSION" >> "$BASH_ENV"
-      - run:
-          name: Build and publish
-          command: task publish VERSION="$VERSION"
-
 workflows:
   test-publish:
+    when:
+      not: << pipeline.parameters.prerelease >>
     jobs:
-      - test:
-          context: [github-readonly]
-          filters:
-            tags:
-              only: /.*/
-      - build:
-          context: [github-readonly]
-          filters:
-            tags:
-              only: /.*/
-      - acceptance:
-          context: [github-readonly]
-          filters:
-            tags:
-              only: /.*/
+      - test
+      - build
+      - acceptance
       - smoke-test:
           requires: [build]
-          context: [github-readonly]
+      - toolkit/release-pr:
+          name: release-pr
+          executor: go
+          cache-prefix: setup-terraform-go
+          # One at a time, so two pushes can't race to rewrite release/next.
+          serial-group: << pipeline.project.slug >>/release-pr
+          requires: &release-requires
+            - test
+            - acceptance
+            - smoke-test
+          context: [github-release]
           filters:
-            tags:
-              only: /.*/
-      - publish:
-          requires: [test, acceptance, smoke-test]
-          context: [functions-publisher, github-readonly]
-          filters:
-            tags:
-              only: /^v\d+\.\d+\.\d+$/
             branches:
-              ignore: /.*/
+              only: main
+      - toolkit/publish:
+          name: publish
+          executor: go
+          cache-prefix: setup-terraform-go
+          serial-group: << pipeline.project.slug >>/publish
+          requires: *release-requires
+          context: [functions-publisher, github-release]
+          filters:
+            branches:
+              only: main
+
+  # Triggered by hand, so it skips the smoke test: the pre-release is what gets
+  # tested. Only maintainers can publish one.
+  prerelease:
+    when: << pipeline.parameters.prerelease >>
+    jobs:
+      - test
+      - build
+      - toolkit/publish-prerelease:
+          name: publish-prerelease
+          executor: go
+          cache-prefix: setup-terraform-go
+          requires: [test, build]
+          context: [functions-prerelease]

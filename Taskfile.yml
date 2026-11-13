@@ -19,12 +19,31 @@ tasks:
   test:
     desc: Run unit and CLI tests (hermetic, no network)
     cmds:
-      - go tool gotestsum -- ./...
+      - go tool gotestsum --junitfile test-results/unit.xml -- ./...
 
   acceptance:
     desc: Run acceptance tests that install real Terraform (network required; safe to run locally)
     cmds:
-      - go test -tags acceptance -v -timeout 20m ./acceptance/...
+      - go tool gotestsum --junitfile test-results/acceptance.xml --format standard-verbose -- -tags acceptance -timeout 20m ./acceptance/...
+
+  lint-tasks:
+    desc: Check every task the CI config invokes exists
+    cmds:
+      - |
+        set -eu
+        # Read the Taskfile rather than ask the task binary: --list output has
+        # changed between versions, and an empty answer would pass everything
+        # or fail everything.
+        defined=" $(grep -oE '^  [a-z][a-z-]*:' Taskfile.yml | tr -d ' :' | tr '\n' ' ')"
+        missing=""
+        for t in $(grep -v '^[[:space:]]*#' .circleci/config.yml \
+                   | grep -oE 'task [a-z][a-z-]*' | awk '{print $2}' | sort -u); do
+          case "$defined" in *" $t "*) ;; *) missing="$missing $t" ;; esac
+        done
+        if [ -n "$missing" ]; then
+          echo "CI config invokes tasks that do not exist:$missing" >&2
+          exit 1
+        fi
 
   tidy:
     desc: Tidy go.mod / go.sum
@@ -55,3 +74,8 @@ tasks:
       vars: [VERSION]
     cmds:
       - go tool release --name setup-terraform --version "{{.VERSION}}"
+
+  publish-prerelease:
+    desc: Build and publish this commit as a pre-release, without making it the latest
+    cmds:
+      - go tool release --name setup-terraform --prerelease
