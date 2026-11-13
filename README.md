@@ -22,6 +22,14 @@ Pin a Terraform version:
     command: circleci run github.com/circleci-functions/setup-terraform@<version> -- --version 1.9.8
 ```
 
+Or read it from the repo's `.terraform-version` file, so the version lives in one place:
+
+```yaml
+- run:
+    name: Install Terraform
+    command: circleci run github.com/circleci-functions/setup-terraform@<version> -- --version-file .terraform-version
+```
+
 The `--` separates the function's flags from the runner's own; keep it even when passing no
 flags.
 
@@ -30,6 +38,7 @@ flags.
 | Flag | Default | Description |
 |---|---|---|
 | `--version` | `latest` | Terraform version to install. `latest` for the newest stable release, an exact version (`1.9.8`), or a prefix (`1.9`, `1`) that resolves to the newest stable release starting with it. Prereleases are never selected. |
+| `--version-file` | | Path to a [tfenv](https://github.com/tfutils/tfenv)-style `.terraform-version` file to read the version from instead. It holds one version, in any form `--version` takes; whitespace and `#` comments are ignored. It can't be used with `--version`, and an empty or missing file is an error. |
 | `--os` | `linux` | Operating system to install for: `linux` or `darwin`. |
 | `--arch` | `amd64` | Architecture to install for: `amd64` or `arm64`. |
 

@@ -1,6 +1,8 @@
 package setupterraform_clitest
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,9 +22,16 @@ func run(t *testing.T, args ...string) (int, string) {
 func TestHelp(t *testing.T) {
 	code, out := run(t, "--help")
 	assert.Equal(t, code, 0, out)
-	for _, want := range []string{"Install the Terraform CLI", "--version", "--os", "--arch"} {
+	for _, want := range []string{"Install the Terraform CLI", "--version", "--version-file", "--os", "--arch"} {
 		assert.Assert(t, strings.Contains(out, want), "help missing %q:\n%s", want, out)
 	}
+}
+
+func emptyFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), ".terraform-version")
+	assert.NilError(t, os.WriteFile(path, nil, 0o600))
+	return path
 }
 
 func TestFlagErrors(t *testing.T) {
@@ -34,6 +43,9 @@ func TestFlagErrors(t *testing.T) {
 		{"invalid os", []string{"--os", "freebsd"}, "--os"},
 		{"invalid arch", []string{"--arch", "riscv"}, "--arch"},
 		{"unknown flag", []string{"--nope"}, "unknown flag"},
+		{"version and version file", []string{"--version", "1.9.8", "--version-file", ".terraform-version"}, "--version and --version-file can't be used together"},
+		{"missing version file", []string{"--version-file", "does-not-exist/.terraform-version"}, "read version file"},
+		{"empty version file", []string{"--version-file", emptyFile(t)}, "has no version in it"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
