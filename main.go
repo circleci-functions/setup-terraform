@@ -24,7 +24,7 @@ import (
 
 type cli struct {
 	Version     string `help:"Terraform version to install: 'latest', an exact version (1.9.8), or a prefix (1.9, 1) resolving to the newest stable match. When neither this nor --version-file is set, latest is installed." xor:"version"`
-	VersionFile string `name:"version-file" help:"Path to a .terraform-version file to read the version from, in the form --version takes. Can't be used with --version." xor:"version"`
+	VersionFile string `name:"version-file" help:"Path to a .terraform-version file to read the version from, in the form --version takes. Can't be used with --version." xor:"version" example:".terraform-version"`
 	OS          string `help:"Operating system to install for." enum:"linux,darwin" default:"linux"`
 	Arch        string `help:"Architecture to install for." enum:"amd64,arm64" default:"amd64"`
 }
@@ -81,7 +81,7 @@ func run(ctx context.Context, client *sdk.Client) error {
 	var flags cli
 	kCtx := kong.Parse(&flags,
 		kong.Name("setup-terraform"),
-		kong.Description("Install the Terraform CLI and put it on PATH.\n\nExample:\n  circleci run github.com/circleci-functions/setup-terraform@<version> -- --version 1.9.8"),
+		kong.Description("Install the Terraform CLI and put it on PATH for later steps. Use this function instead of the circleci/terraform orb's install command."),
 		kong.UsageOnError(),
 		functionyaml.Embed(),
 	)
