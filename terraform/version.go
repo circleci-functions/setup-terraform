@@ -25,8 +25,8 @@ var stableVersion = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 //
 // An exact version (1.9.8) is returned as-is without contacting the server.
 // "latest" returns the newest stable release; any other value is treated as a
-// prefix (1.9, 1) and returns the newest stable release whose version starts
-// with it. Prereleases are never returned.
+// prefix of whole version components (1.9, 1) and returns the newest stable
+// release under it. Prereleases are never returned.
 func ResolveVersion(ctx context.Context, baseURL, spec string) (string, error) {
 	if stableVersion.MatchString(spec) {
 		return spec, nil
@@ -45,11 +45,17 @@ func ResolveVersion(ctx context.Context, baseURL, spec string) (string, error) {
 	}
 
 	for _, v := range versions {
-		if strings.HasPrefix(v, spec) {
+		if matchesPrefix(v, spec) {
 			return v, nil
 		}
 	}
 	return "", fmt.Errorf("no stable terraform version matches %q", spec)
+}
+
+// matchesPrefix reports whether version v falls under the prefix spec, whole
+// components only: 1.1 matches 1.1.9 but not 1.10.3.
+func matchesPrefix(v, spec string) bool {
+	return strings.HasPrefix(v, strings.TrimSuffix(spec, ".")+".")
 }
 
 // fetchVersions returns the stable versions from the release index, newest first.

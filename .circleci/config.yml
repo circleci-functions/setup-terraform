@@ -15,10 +15,42 @@ executors:
   go:
     docker:
       - image: cimg/go:1.27
-  # smoke-test runs the cross-compiled binary on an image with no Go and no Terraform.
+  # The smoke jobs run the cross-compiled binary on executors with no Go and no
+  # Terraform.
   base:
     docker:
       - image: cimg/base:stable
+  # cimg/base:stable is amd64 only; current is published for arm64 too.
+  base-arm64:
+    docker:
+      - image: cimg/base:current
+    resource_class: arm.medium
+  macos:
+    macos:
+      xcode: "16.4.0"
+
+commands:
+  smoke:
+    description: >-
+      Install Terraform with the built binary for this executor, passing no
+      --os or --arch, then resolve terraform by name in a later step that
+      sourced nothing.
+    parameters:
+      platform:
+        type: string
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install Terraform with the built binary
+          command: |
+            "$PWD/dist/setup-terraform/<< parameters.platform >>/setup-terraform" --version 1.9.8
+      - run:
+          name: A later step resolves terraform on PATH, unaided
+          command: |
+            command -v terraform
+            terraform version | tee /dev/stderr | grep -q "Terraform v1.9.8"
+            terraform version | grep -q "on $(echo "<< parameters.platform >>" | tr / _)"
 
 jobs:
   test:
@@ -75,25 +107,26 @@ jobs:
           path: test-results
 
   # The one property the in-process acceptance suite can't prove: the shipped
-  # cross-compiled artifact installs Terraform for real, and a later step resolves
-  # terraform on PATH without anything being sourced from a shell.
+  # cross-compiled artifact installs Terraform for the executor it runs on, and a
+  # later step resolves terraform on PATH without anything being sourced from a
+  # shell.
   smoke-test:
     executor: base
     steps:
-      - checkout
-      - attach_workspace:
-          at: .
-      - run:
-          name: Install Terraform with the built binary
-          command: |
-            BIN="$PWD/dist/setup-terraform/linux/amd64/setup-terraform"
-            "$BIN" --version 1.9.8
-            terraform version | grep -q "Terraform v1.9.8"
-      - run:
-          name: A later step resolves terraform on PATH, unaided
-          command: |
-            command -v terraform
-            terraform version
+      - smoke:
+          platform: linux/amd64
+
+  smoke-arm64:
+    executor: base-arm64
+    steps:
+      - smoke:
+          platform: linux/arm64
+
+  smoke-macos:
+    executor: macos
+    steps:
+      - smoke:
+          platform: darwin/arm64
 
 workflows:
   test-publish:
@@ -105,6 +138,10 @@ workflows:
       - acceptance
       - smoke-test:
           requires: [build]
+      - smoke-arm64:
+          requires: [build]
+      - smoke-macos:
+          requires: [build]
       - toolkit/release-pr:
           name: release-pr
           executor: go
@@ -115,6 +152,8 @@ workflows:
             - test
             - acceptance
             - smoke-test
+            - smoke-arm64
+            - smoke-macos
           context: [github-release]
           filters:
             branches:

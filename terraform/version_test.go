@@ -40,6 +40,8 @@ func TestResolveVersion(t *testing.T) {
 		{"prefix minor", "1.9", "1.9.8"},
 		{"prefix major", "1", "1.10.3"},
 		{"prefix full minor line", "1.10", "1.10.3"},
+		{"prefix matches whole components only", "1.1", "1.1.9"},
+		{"prefix with trailing dot", "1.9.", "1.9.8"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

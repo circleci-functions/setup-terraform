@@ -51,6 +51,7 @@ Without `--version` or `--version-file`, setup-terraform installs the newest sta
 | `1.9` | Newest stable `1.9.x` |
 | `1.9.8` | Exactly `1.9.8` |
 
+A prefix matches whole version components, so `1.1` picks the newest `1.1.x`, never `1.10.0`.
 Prereleases (`1.10.0-rc1`, `1.10.0-alpha20240606`) are never picked by `latest` or a prefix.
 
 To keep the version in one place, point at a [tfenv](https://github.com/tfutils/tfenv)-style
@@ -121,11 +122,11 @@ Set `TF_IN_AUTOMATION=1` on the job to drop the hints Terraform prints for inter
 |------|---------|-------------|
 | `--version` | `latest` | Version spec: `latest`, `1`, `1.9`, `1.9.8`. See [Choosing a version](#choosing-a-version) |
 | `--version-file` | (empty) | Path to a `.terraform-version` file to read the version spec from. Can't be used with `--version` |
-| `--os` | `linux` | Operating system to install for: `linux` or `darwin` |
-| `--arch` | `amd64` | Architecture to install for: `amd64` or `arm64` |
+| `--os` | (the step's) | Operating system to install for: `linux` or `darwin` |
+| `--arch` | (the step's) | Architecture to install for: `amd64` or `arm64` |
 
-`--os` and `--arch` pick the release to download. Set them to match the executor when it is
-not `linux`/`amd64`.
+setup-terraform installs the release built for the platform the step runs on. `--os` and
+`--arch` override that, for example to run the `amd64` build under Rosetta.
 
 ## Platform support
 
