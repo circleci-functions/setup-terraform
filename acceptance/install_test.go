@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -31,7 +30,9 @@ func TestInstall(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, env := sandbox(t)
 
-			args := []string{"--os", runtime.GOOS, "--arch", runtime.GOARCH}
+			// No --os or --arch: the release is picked for the platform the
+			// tests run on.
+			var args []string
 			if tc.version != "" {
 				args = append(args, "--version", tc.version)
 			}
