@@ -23,9 +23,10 @@ import (
 )
 
 type cli struct {
-	Version string `help:"Terraform version to install: 'latest', an exact version (1.9.8), or a prefix (1.9, 1) resolving to the newest stable match." default:"latest"`
-	OS      string `help:"Operating system to install for." enum:"linux,darwin" default:"linux"`
-	Arch    string `help:"Architecture to install for." enum:"amd64,arm64" default:"amd64"`
+	Version     string `help:"Terraform version to install: 'latest', an exact version (1.9.8), or a prefix (1.9, 1) resolving to the newest stable match. When neither this nor --version-file is set, latest is installed." xor:"version"`
+	VersionFile string `name:"version-file" help:"Path to a .terraform-version file to read the version from, in the form --version takes. Can't be used with --version." xor:"version"`
+	OS          string `help:"Operating system to install for." enum:"linux,darwin" default:"linux"`
+	Arch        string `help:"Architecture to install for." enum:"amd64,arm64" default:"amd64"`
 }
 
 func (c *cli) Run(ctx context.Context) error {
@@ -33,9 +34,21 @@ func (c *cli) Run(ctx context.Context) error {
 		return fmt.Errorf("setup-terraform supports only linux and darwin, not %s", runtime.GOOS)
 	}
 
+	spec := c.Version
+	switch {
+	case c.VersionFile != "":
+		var err error
+		spec, err = terraform.ReadVersionFile(c.VersionFile)
+		if err != nil {
+			return fmt.Errorf("read version file: %w", err)
+		}
+	case spec == "":
+		spec = "latest"
+	}
+
 	version, err := terraform.Install(ctx, terraform.Options{
 		BaseURL:    terraform.DefaultBaseURL,
-		Version:    c.Version,
+		Version:    spec,
 		OS:         c.OS,
 		Arch:       c.Arch,
 		InstallDir: installDir(),
