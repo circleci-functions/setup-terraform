@@ -15,6 +15,7 @@ func TestPlatform(t *testing.T) {
 	}{
 		{name: "detects linux arm64", goos: "linux", goarch: "arm64", wantOS: "linux", wantArch: "arm64"},
 		{name: "detects darwin arm64", goos: "darwin", goarch: "arm64", wantOS: "darwin", wantArch: "arm64"},
+		{name: "detects windows amd64", goos: "windows", goarch: "amd64", wantOS: "windows", wantArch: "amd64"},
 		{name: "flags override the running platform", osName: "linux", arch: "amd64", goos: "darwin", goarch: "arm64", wantOS: "linux", wantArch: "amd64"},
 		{name: "one flag overrides only its half", arch: "amd64", goos: "darwin", goarch: "arm64", wantOS: "darwin", wantArch: "amd64"},
 	}
@@ -35,7 +36,7 @@ func TestPlatformUnsupported(t *testing.T) {
 		goos, goarch string
 		want         string
 	}{
-		{name: "unsupported running os", goos: "windows", goarch: "amd64", want: `--os must be one of linux, darwin, not "windows"`},
+		{name: "unsupported running os", goos: "freebsd", goarch: "amd64", want: `--os must be one of linux, darwin, windows, not "freebsd"`},
 		{name: "unsupported running arch", goos: "linux", goarch: "s390x", want: `--arch must be one of amd64, arm64, not "s390x"`},
 		{name: "unsupported os flag", osName: "freebsd", goos: "linux", goarch: "amd64", want: `--os must be one of`},
 		{name: "unsupported arch flag", arch: "riscv", goos: "linux", goarch: "amd64", want: `--arch must be one of`},

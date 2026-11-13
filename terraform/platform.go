@@ -9,7 +9,7 @@ import (
 // supportedOS and supportedArch are the platforms setup-terraform installs
 // Terraform for.
 var (
-	supportedOS   = []string{"linux", "darwin"}
+	supportedOS   = []string{"linux", "darwin", "windows"}
 	supportedArch = []string{"amd64", "arm64"}
 )
 

@@ -1,8 +1,8 @@
 # setup-terraform
 
-Installs the [Terraform](https://developer.hashicorp.com/terraform) CLI and puts it on `PATH`
-for the rest of the job. The download is checked against HashiCorp's published `SHA256SUMS`
-before anything is installed.
+Installs the [Terraform](https://developer.hashicorp.com/terraform) CLI, puts it on `PATH` for
+the rest of the job, and caches the provider plugins `terraform init` downloads. The download
+is checked against HashiCorp's published `SHA256SUMS` before anything is installed.
 
 Use this function instead of the `install` command of the `circleci/terraform` orb.
 
@@ -21,6 +21,7 @@ jobs:
       - setup-terraform:
           with:
             version-file: .terraform-version
+            checksum: '{{ checksum ".terraform.lock.hcl" }}'
       - run: terraform init -input=false
       - run: terraform plan -input=false -out=tfplan
 ```
@@ -74,12 +75,60 @@ cannot just prepend to `PATH`. It installs `terraform` under `$XDG_CACHE_HOME/te
 (`~/.cache/terraform` by default) and links it into a directory `PATH` already holds, which
 reaches every later process whatever shell it runs in.
 
-The link goes in a writable directory on `PATH` ahead of any `terraform` the image already
-has, or takes over the directory that one is in. If that needs root, setup-terraform uses
-`sudo -n`. A binary it replaces is kept as `terraform.pathlink-old` in the same directory.
+The directory is chosen by preference, `~/.local/bin` then `~/bin` then `/usr/local/bin`, as
+long as it comes ahead of any `terraform` the image already has. Failing that, setup-terraform
+takes over the directory that one is in. If that needs root, it uses `sudo -n`. A binary it
+replaces is kept as `terraform.pathlink-old` in the same directory.
+
+On Windows, steps pick `terraform` up in any shell (bash, cmd or PowerShell) through small
+forwarding shims rather than symlinks.
 
 Once linked, setup-terraform runs the `terraform` that `PATH` resolves and fails unless it
 reports the version just installed.
+
+## Caching
+
+Caching is on by default. setup-terraform restores Terraform's
+[provider plugin cache](https://developer.hashicorp.com/terraform/cli/config/config-file#provider-plugin-cache)
+before your steps run, and saves it once the job is done. So `terraform init` in a later step
+reuses providers an earlier job downloaded, and nothing in between needs a cache step of its
+own. A job that fails, is cancelled or times out still saves what it downloaded.
+
+Pass `--checksum` so the cache refreshes when your providers change. CircleCI expands
+`{{ checksum ".terraform.lock.hcl" }}` before setup-terraform runs:
+
+```yaml
+- setup-terraform:
+    with:
+      checksum: '{{ checksum ".terraform.lock.hcl" }}'
+```
+
+When the checksum changes, the cache starts from the newest entry saved in the current 72-hour
+window, so only new providers are downloaded. The cache rotates every 72 hours, which keeps it
+from growing without limit. Each job keeps its own cache, since jobs that run different modules
+need different providers. Use `--key` to keep caches apart within a job, for example per root
+module in a monorepo, and `--cache=false` to turn caching off. Cache problems never fail the job.
+
+Terraform uses a cached provider only when `.terraform.lock.hcl` records a checksum for it on
+the platform the job runs on. A lock file made on a Mac often has only that Mac's. Record the
+platforms CI uses as well, and commit the result:
+
+```sh
+terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
+```
+
+Without that, `terraform init` downloads the provider every time, though the job still works.
+
+setup-terraform tells Terraform where the cache is without touching your own CLI configuration:
+
+- If the job sets `TF_PLUGIN_CACHE_DIR`, or your CLI configuration file sets
+  `plugin_cache_dir`, that directory is cached.
+- Otherwise it caches `~/.terraform.d/plugin-cache` (`%APPDATA%\terraform.d\plugin-cache` on
+  Windows), and names it in `~/.terraform.d/setup-terraform.tfrc`, a file Terraform reads in
+  every later step.
+- Terraform doesn't read that file when `TF_CLI_CONFIG_FILE` is set. In that case
+  setup-terraform exports `TF_PLUGIN_CACHE_DIR` through `$BASH_ENV` instead, which only bash
+  steps read. To reach every shell, set `plugin_cache_dir` in that file yourself.
 
 ## HCP Terraform and Terraform Enterprise
 
@@ -122,13 +171,17 @@ Set `TF_IN_AUTOMATION=1` on the job to drop the hints Terraform prints for inter
 |------|---------|-------------|
 | `--version` | `latest` | Version spec: `latest`, `1`, `1.9`, `1.9.8`. See [Choosing a version](#choosing-a-version) |
 | `--version-file` | (empty) | Path to a `.terraform-version` file to read the version spec from. Can't be used with `--version` |
-| `--os` | (the step's) | Operating system to install for: `linux` or `darwin` |
+| `--os` | (the step's) | Operating system to install for: `linux`, `darwin` or `windows` |
 | `--arch` | (the step's) | Architecture to install for: `amd64` or `arm64` |
+| `--cache` | true | Set to `false` to turn off the provider plugin cache |
+| `--key` | (empty) | Cache key component, for keeping caches apart within a job, e.g. per root module in a monorepo |
+| `--checksum` | (empty) | Refresh the cache when this changes, usually `{{ checksum ".terraform.lock.hcl" }}` |
 
 setup-terraform installs the release built for the platform the step runs on. `--os` and
 `--arch` override that, for example to run the `amd64` build under Rosetta.
 
 ## Platform support
 
-Linux and macOS, on amd64 and arm64. There is no Windows support yet: on Windows the function
-exits with an error rather than installing anything.
+Linux, macOS and Windows, on amd64 and arm64. HashiCorp publishes Windows arm64 builds only
+for recent Terraform releases. For an older one, pass `--arch amd64`, which runs under
+emulation.

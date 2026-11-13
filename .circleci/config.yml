@@ -28,6 +28,11 @@ executors:
   macos:
     macos:
       xcode: "16.4.0"
+  windows:
+    machine:
+      image: windows-server-2022-gui:current
+      shell: bash.exe -eo pipefail
+    resource_class: windows.medium
 
 commands:
   smoke:
@@ -38,18 +43,22 @@ commands:
     parameters:
       platform:
         type: string
+      ext:
+        type: string
+        default: ""
     steps:
       - attach_workspace:
           at: .
       - run:
           name: Install Terraform with the built binary
           command: |
-            "$PWD/dist/setup-terraform/<< parameters.platform >>/setup-terraform" --version 1.9.8
+            "$PWD/dist/setup-terraform/<< parameters.platform >>/setup-terraform<< parameters.ext >>" --version 1.9.8
       - run:
           name: A later step resolves terraform on PATH, unaided
           command: |
             command -v terraform
-            terraform version | tee /dev/stderr | grep -q "Terraform v1.9.8"
+            terraform version
+            terraform version | grep -q "Terraform v1.9.8"
             terraform version | grep -q "on $(echo "<< parameters.platform >>" | tr / _)"
 
 jobs:
@@ -128,6 +137,13 @@ jobs:
       - smoke:
           platform: darwin/arm64
 
+  smoke-windows:
+    executor: windows
+    steps:
+      - smoke:
+          platform: windows/amd64
+          ext: ".exe"
+
 workflows:
   test-publish:
     when:
@@ -142,6 +158,8 @@ workflows:
           requires: [build]
       - smoke-macos:
           requires: [build]
+      - smoke-windows:
+          requires: [build]
       - toolkit/release-pr:
           name: release-pr
           executor: go
@@ -154,6 +172,7 @@ workflows:
             - smoke-test
             - smoke-arm64
             - smoke-macos
+            - smoke-windows
           context: [github-release]
           filters:
             branches:

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,9 +15,19 @@ import (
 	"strings"
 )
 
-// binaryName is the executable extracted from the release archive. The orb
-// supports only linux and darwin, so there is no .exe variant.
+// binaryName is the executable PATH resolves, and the name pathlink links.
 const binaryName = "terraform"
+
+// exeName is the executable in the release archive for osName.
+func exeName(osName string) string {
+	if osName == "windows" {
+		return binaryName + ".exe"
+	}
+	return binaryName
+}
+
+// errNotFound marks a download the release server has no file for.
+var errNotFound = errors.New("not found")
 
 // Download fetches the Terraform release archive for version/osName/arch from
 // baseURL, verifies it against the release's published SHA256SUMS, extracts the
@@ -26,6 +37,9 @@ func Download(ctx context.Context, baseURL, version, osName, arch, destDir strin
 	prefix := baseURL + "/terraform/" + version + "/"
 
 	archive, err := get(ctx, prefix+zipName)
+	if errors.Is(err, errNotFound) {
+		return "", fmt.Errorf("terraform %s has no %s_%s build: %w", version, osName, arch, err)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -43,7 +57,7 @@ func Download(ctx context.Context, baseURL, version, osName, arch, destDir strin
 		return "", fmt.Errorf("checksum mismatch for %s: expected %s, got %x", zipName, expected, got)
 	}
 
-	return extractBinary(archive, destDir)
+	return extractBinary(archive, exeName(osName), destDir)
 }
 
 // get returns the body of a successful GET, or an error for a transport failure
@@ -58,6 +72,9 @@ func get(ctx context.Context, url string) ([]byte, error) {
 		return nil, fmt.Errorf("download %s: %w", url, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("download %s: %w", url, errNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download %s: %s", url, resp.Status)
 	}
@@ -76,9 +93,9 @@ func sumFor(sums []byte, filename string) (string, error) {
 	return "", fmt.Errorf("no checksum for %s in SHA256SUMS", filename)
 }
 
-// extractBinary writes the terraform entry from the zip archive into destDir and
-// returns its path.
-func extractBinary(archive []byte, destDir string) (string, error) {
+// extractBinary writes the entry called name from the zip archive into destDir
+// and returns its path.
+func extractBinary(archive []byte, name, destDir string) (string, error) {
 	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
 		return "", fmt.Errorf("open terraform archive: %w", err)
@@ -87,7 +104,7 @@ func extractBinary(archive []byte, destDir string) (string, error) {
 		return "", err
 	}
 	for _, f := range zr.File {
-		if f.Name != binaryName {
+		if f.Name != name {
 			continue
 		}
 		rc, err := f.Open()
@@ -96,7 +113,7 @@ func extractBinary(archive []byte, destDir string) (string, error) {
 		}
 		defer rc.Close()
 
-		dest := filepath.Join(destDir, binaryName)
+		dest := filepath.Join(destDir, name)
 		//nolint:gosec // dest is destDir joined with a constant filename; the 0755 exec bit is required to run terraform
 		out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 		if err != nil {
@@ -108,5 +125,5 @@ func extractBinary(archive []byte, destDir string) (string, error) {
 		}
 		return dest, nil
 	}
-	return "", fmt.Errorf("%s not found in archive", binaryName)
+	return "", fmt.Errorf("%s not found in archive", name)
 }
