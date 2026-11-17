@@ -19,6 +19,9 @@ type Options struct {
 	// InstallDir is where the terraform binary is placed and linked from. It
 	// must persist for the rest of the job.
 	InstallDir string
+	// PinnedSums, when not nil, is a trusted file in SHA256SUMS form the
+	// archive must also match. See Download.
+	PinnedSums []byte
 }
 
 // Install resolves opts.Version, downloads and verifies that Terraform release,
@@ -28,7 +31,7 @@ func Install(ctx context.Context, opts Options) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := Download(ctx, opts.BaseURL, version, opts.OS, opts.Arch, opts.InstallDir); err != nil {
+	if _, err := Download(ctx, opts.BaseURL, version, opts.OS, opts.Arch, opts.InstallDir, opts.PinnedSums); err != nil {
 		return "", err
 	}
 	if err := linkOnPath(opts.InstallDir, version); err != nil {

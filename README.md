@@ -2,7 +2,8 @@
 
 Installs the [Terraform](https://developer.hashicorp.com/terraform) CLI, puts it on `PATH` for
 the rest of the job, and caches the provider plugins `terraform init` downloads. The download
-is checked against HashiCorp's published `SHA256SUMS` before anything is installed.
+is checked against HashiCorp's published `SHA256SUMS`, and optionally against a
+[pinned checksum](#pinning-the-checksum), before anything is installed.
 
 Use this function instead of the `install` command of the `circleci/terraform` orb.
 
@@ -67,6 +68,35 @@ To keep the version in one place, point at a [tfenv](https://github.com/tfutils/
 The file holds one version, in any form `--version` takes. Blank lines and `#` comments are
 ignored. A missing or empty file is an error, as is one with more than one version in it.
 `--version` and `--version-file` can't be used together.
+
+## Pinning the checksum
+
+By default the download is checked against the `SHA256SUMS` file published beside it, on the
+same host. That catches a corrupt download, but not a release replaced on the server along with
+its `SHA256SUMS`. To check against a checksum you keep yourself, commit a file in `SHA256SUMS`
+form and pass it with `--sha256-file`:
+
+```yaml
+- setup-terraform:
+    with:
+      version-file: .terraform-version
+      sha256-file: .terraform-sha256
+```
+
+The file can be a copy of the release's whole `SHA256SUMS`, or only the lines for the platforms
+your jobs run on. The download must match both the published line and yours. A file with no
+line for the archive being installed is an error, so add a line for each platform you use.
+`--sha256-file` needs an exact version, since `latest` or a prefix can change under a pin.
+
+To make the file, for the version in `.terraform-version`:
+
+```sh
+v=$(cat .terraform-version)
+curl -fsSL "https://releases.hashicorp.com/terraform/$v/terraform_${v}_SHA256SUMS" \
+  | grep -E '_(linux_amd64|linux_arm64)\.zip$' > .terraform-sha256
+```
+
+Review the new checksums like any pin when you change the version.
 
 ## How it gets onto PATH
 
@@ -176,6 +206,7 @@ Set `TF_IN_AUTOMATION=1` on the job to drop the hints Terraform prints for inter
 | `--cache` | true | Set to `false` to turn off the provider plugin cache |
 | `--key` | (empty) | Cache key component, for keeping caches apart within a job, e.g. per root module in a monorepo |
 | `--checksum` | (empty) | Refresh the cache when this changes, usually `{{ checksum ".terraform.lock.hcl" }}` |
+| `--sha256-file` | (empty) | A file in `SHA256SUMS` form the download must also match. See [Pinning the checksum](#pinning-the-checksum) |
 
 setup-terraform installs the release built for the platform the step runs on. `--os` and
 `--arch` override that, for example to run the `amd64` build under Rosetta.

@@ -2,7 +2,7 @@
 // links it onto PATH so later steps can run terraform by name.
 //
 // The download is verified against HashiCorp's published SHA256SUMS before
-// install.
+// install, and against a pinned SHA256SUMS file when one is given.
 //
 // It also points Terraform at a provider plugin cache that is restored now and
 // saved at the end of the job.
@@ -33,6 +33,8 @@ type cli struct {
 	OS          string `help:"Operating system to install for: linux, darwin or windows. Defaults to the one the step runs on."`
 	Arch        string `help:"Architecture to install for: amd64 or arm64. Defaults to the one the step runs on."`
 
+	SHA256File string `name:"sha256-file" help:"Path to a file in SHA256SUMS form, such as a copy of the release's own, that the download must also match. Its line for the archive being installed must be there. Needs an exact version." example:".terraform-sha256"`
+
 	Cache    bool   `help:"Cache Terraform's provider plugins: restore them now and save them at the end of the job. Set to false to turn caching off." default:"true"`
 	Key      string `help:"Optional cache key component, to keep caches apart, e.g. per root module in a monorepo."`
 	Checksum string `help:"Optional checksum to start a fresh cache entry when it changes, usually the checksum of .terraform.lock.hcl."`
@@ -55,12 +57,24 @@ func (c *cli) Run(ctx context.Context, client *sdk.Client) error {
 		spec = "latest"
 	}
 
+	var pinned []byte
+	if c.SHA256File != "" {
+		if !terraform.IsExact(spec) {
+			return fmt.Errorf("--sha256-file needs an exact version, not %q", spec)
+		}
+		pinned, err = os.ReadFile(c.SHA256File)
+		if err != nil {
+			return fmt.Errorf("read sha256 file: %w", err)
+		}
+	}
+
 	version, err := terraform.Install(ctx, terraform.Options{
 		BaseURL:    terraform.DefaultBaseURL,
 		Version:    spec,
 		OS:         osName,
 		Arch:       arch,
 		InstallDir: installDir(),
+		PinnedSums: pinned,
 	})
 	if err != nil {
 		return err

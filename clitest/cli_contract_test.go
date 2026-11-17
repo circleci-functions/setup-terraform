@@ -22,7 +22,7 @@ func run(t *testing.T, args ...string) (int, string) {
 func TestHelp(t *testing.T) {
 	code, out := run(t, "--help")
 	assert.Equal(t, code, 0, out)
-	for _, want := range []string{"Install the Terraform CLI", "--version", "--version-file", "--os", "--arch", "--cache", "--key", "--checksum"} {
+	for _, want := range []string{"Install the Terraform CLI", "--version", "--version-file", "--os", "--arch", "--cache", "--key", "--checksum", "--sha256-file"} {
 		assert.Assert(t, strings.Contains(out, want), "help missing %q:\n%s", want, out)
 	}
 }
@@ -46,6 +46,9 @@ func TestFlagErrors(t *testing.T) {
 		{"version and version file", []string{"--version", "1.9.8", "--version-file", ".terraform-version"}, "--version and --version-file can't be used together"},
 		{"missing version file", []string{"--version-file", "does-not-exist/.terraform-version"}, "read version file"},
 		{"empty version file", []string{"--version-file", emptyFile(t)}, "has no version in it"},
+		{"sha256 file with a prefix", []string{"--version", "1.9", "--sha256-file", "SHA256SUMS"}, "--sha256-file needs an exact version"},
+		{"sha256 file with latest", []string{"--sha256-file", "SHA256SUMS"}, "--sha256-file needs an exact version"},
+		{"missing sha256 file", []string{"--version", "1.9.8", "--sha256-file", "does-not-exist/SHA256SUMS"}, "read sha256 file"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
