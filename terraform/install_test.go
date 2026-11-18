@@ -64,7 +64,7 @@ func TestDownload(t *testing.T) {
 	baseURL := releaseServer(t, osName, arch, archive, sums)
 	dest := t.TempDir()
 
-	path, err := Download(context.Background(), baseURL, version, osName, arch, dest)
+	path, err := Download(context.Background(), baseURL, version, osName, arch, dest, nil)
 	assert.NilError(t, err)
 	assert.Equal(t, path, filepath.Join(dest, "terraform"))
 
@@ -109,7 +109,7 @@ func TestDownloadErrors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL := releaseServer(t, osName, arch, tc.archive, tc.sums(tc.archive))
-			_, err := Download(context.Background(), baseURL, version, osName, arch, t.TempDir())
+			_, err := Download(context.Background(), baseURL, version, osName, arch, t.TempDir(), nil)
 			assert.ErrorContains(t, err, tc.wantErr)
 		})
 	}
@@ -122,7 +122,7 @@ func TestDownloadWindowsExtractsExe(t *testing.T) {
 	baseURL := releaseServer(t, osName, arch, archive, sumsLine(archive, zipName))
 	dest := t.TempDir()
 
-	path, err := Download(context.Background(), baseURL, version, osName, arch, dest)
+	path, err := Download(context.Background(), baseURL, version, osName, arch, dest, nil)
 	assert.NilError(t, err)
 	assert.Equal(t, path, filepath.Join(dest, "terraform.exe"))
 }
@@ -133,6 +133,50 @@ func TestDownloadNoBuildForPlatform(t *testing.T) {
 	// The server only has linux_arm64; ask for windows_arm64.
 	baseURL := releaseServer(t, "linux", "arm64", archive, "")
 
-	_, err := Download(context.Background(), baseURL, version, "windows", "arm64", t.TempDir())
+	_, err := Download(context.Background(), baseURL, version, "windows", "arm64", t.TempDir(), nil)
 	assert.ErrorContains(t, err, "terraform 1.9.8 has no windows_arm64 build")
+}
+
+func TestDownloadPinned(t *testing.T) {
+	const version, osName, arch = "1.9.8", "linux", "amd64"
+	zipName := fmt.Sprintf("terraform_%s_%s_%s.zip", version, osName, arch)
+	archive := makeZip(t, "terraform", "real")
+	baseURL := releaseServer(t, osName, arch, archive, sumsLine(archive, zipName))
+
+	tests := []struct {
+		name    string
+		pinned  string
+		wantErr string
+	}{
+		{
+			name:   "matches the pin",
+			pinned: "abc  terraform_1.9.8_darwin_arm64.zip\n" + sumsLine(archive, zipName),
+		},
+		{
+			// The server's archive and SHA256SUMS agree, but not with the pin.
+			name:    "server swapped both",
+			pinned:  sumsLine(makeZip(t, "terraform", "pinned"), zipName),
+			wantErr: "the sha256 file pins",
+		},
+		{
+			name:    "no line for this os/arch",
+			pinned:  "abc  terraform_1.9.8_darwin_arm64.zip\n",
+			wantErr: "sha256 file: no checksum for " + zipName,
+		},
+		{
+			name:    "empty",
+			pinned:  "",
+			wantErr: "sha256 file: no checksum for",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Download(context.Background(), baseURL, version, osName, arch, t.TempDir(), []byte(tc.pinned))
+			if tc.wantErr == "" {
+				assert.NilError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }

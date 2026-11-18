@@ -21,6 +21,12 @@ const DefaultBaseURL = "https://releases.hashicorp.com"
 // prereleases such as 1.10.0-rc1, so those are never selected.
 var stableVersion = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
+// IsExact reports whether spec names one stable version (1.9.8) rather than
+// latest or a prefix.
+func IsExact(spec string) bool {
+	return stableVersion.MatchString(spec)
+}
+
 // ResolveVersion resolves spec to a concrete stable Terraform version.
 //
 // An exact version (1.9.8) is returned as-is without contacting the server.

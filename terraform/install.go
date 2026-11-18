@@ -32,7 +32,11 @@ var errNotFound = errors.New("not found")
 // Download fetches the Terraform release archive for version/osName/arch from
 // baseURL, verifies it against the release's published SHA256SUMS, extracts the
 // terraform binary into destDir, and returns the path to that binary.
-func Download(ctx context.Context, baseURL, version, osName, arch, destDir string) (string, error) {
+//
+// pinned, when not nil, is a file in SHA256SUMS form that the caller trusts.
+// The archive must also match its line there, so a release swapped on the
+// server along with its SHA256SUMS still fails.
+func Download(ctx context.Context, baseURL, version, osName, arch, destDir string, pinned []byte) (string, error) {
 	zipName := fmt.Sprintf("terraform_%s_%s_%s.zip", version, osName, arch)
 	prefix := baseURL + "/terraform/" + version + "/"
 
@@ -50,11 +54,20 @@ func Download(ctx context.Context, baseURL, version, osName, arch, destDir strin
 
 	expected, err := sumFor(sums, zipName)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("SHA256SUMS: %w", err)
 	}
 	got := sha256.Sum256(archive)
 	if hex.EncodeToString(got[:]) != expected {
 		return "", fmt.Errorf("checksum mismatch for %s: expected %s, got %x", zipName, expected, got)
+	}
+	if pinned != nil {
+		want, err := sumFor(pinned, zipName)
+		if err != nil {
+			return "", fmt.Errorf("sha256 file: %w", err)
+		}
+		if hex.EncodeToString(got[:]) != want {
+			return "", fmt.Errorf("checksum mismatch for %s: the sha256 file pins %s, got %x", zipName, want, got)
+		}
 	}
 
 	return extractBinary(archive, exeName(osName), destDir)
@@ -81,8 +94,8 @@ func get(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// sumFor returns the checksum recorded for filename in a SHA256SUMS file, whose
-// lines are "<hex-sha>  <filename>".
+// sumFor returns the checksum recorded for filename in a file in SHA256SUMS
+// form, whose lines are "<hex-sha>  <filename>".
 func sumFor(sums []byte, filename string) (string, error) {
 	for _, line := range strings.Split(string(sums), "\n") {
 		fields := strings.Fields(line)
@@ -90,7 +103,7 @@ func sumFor(sums []byte, filename string) (string, error) {
 			return fields[0], nil
 		}
 	}
-	return "", fmt.Errorf("no checksum for %s in SHA256SUMS", filename)
+	return "", fmt.Errorf("no checksum for %s", filename)
 }
 
 // extractBinary writes the entry called name from the zip archive into destDir
