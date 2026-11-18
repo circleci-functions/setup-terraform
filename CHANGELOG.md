@@ -6,6 +6,16 @@ added by its release PR (see [RELEASE.md](RELEASE.md)) and becomes its GitHub re
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-18
+
+### What's Changed
+* Check the download against a pinned SHA256SUMS file by @bear in https://github.com/circleci-functions/setup-terraform/pull/11
+
+### New Contributors
+* @bear made their first contribution in https://github.com/circleci-functions/setup-terraform/pull/11
+
+**Full Changelog**: https://github.com/circleci-functions/setup-terraform/compare/v0.3.0...v0.4.0
+
 ## [0.3.0] - 2026-11-13
 
 ### What's Changed
