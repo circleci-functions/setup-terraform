@@ -33,13 +33,6 @@ to source or export yourself.
 `circleci function add setup-terraform` writes the `functions:` entry for you, pinned to the
 latest release. Each [flag](#flags) is a `with:` key, named without its leading `--`.
 
-Where the `functions:` block isn't available, as on CircleCI Server, call setup-terraform by
-its full name with `circleci run` and pass the flags after `--`:
-
-```yaml
-- run: circleci run github.com/circleci-functions/setup-terraform@v0.2.0 -- --version 1.9.8
-```
-
 ## Choosing a version
 
 Without `--version` or `--version-file`, setup-terraform installs the newest stable release.
